@@ -1,0 +1,603 @@
+---
+title: 'Lecture: Monte Carlo Simulations'
+output:
+  pdf_document: default
+  word_document: default
+editor_options:
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Introduction
+
+A computer simulation is a computer model of some (usually) physical process that we are interested in. For example, we might create a simulation of the stock market over time, the population dynamics of a predator and prey species, the processes of star formation, the evolution of HIV resistance in humans, or many other things. In this class, we will use simulations to explore the statistical properties of the statistical methodologies that we study. 
+
+Monte Carlo simulations are one of the most useful tools in the Statisticians toolkit. They can be used in a wide variety of situations where analytic mathematical solutions would be difficult of impossible. For example, simulations of power, false positive rates, and other characteristics are commonly used by statisticians to evaluate the performance of statistical methods. 
+
+Simulations are often very quick and easy in R. An experienced person can often produce a running simulation from scratch in less than 30 minutes. I personally use simulations all of the time in order to explore things that I am interested in. 
+
+## Steps in Making Simulations
+
+1. Make a set of rules that define how our system of interest works. 
+2. Implement those rules in a computer program. 
+3. The output of the computer program will help us understand the implications of the rules that we used to define the system
+
+
+The purpose of a simulation is to help us understand the implications of the set of rules that we used to define the system. 
+
+If the output of the simulation matches the observed data, then the rules that we used to define the simulation may be a useful approximations of reality.
+
+
+## Example #1: Movement of Nematodes
+
+This is an example from a publication of mine. Nematodes are an animal phylum also sometimes called roundworms. They are typically very small, ranging from roughly 0.1 mm to 2 mm in length. Many species of nematode are parasitic. Species that are parasitic on humans include hookworms, pinworms, and filarias. Other species are parasitic on insects, and thus are used as biological pest control agents. Biological control refers to the use of other organisms for controlling pests. For example, you can buy containers of nematodes to spread in your garden to control certain pest insects: 
+
+https://store.doyourownpestcontrol.com/monterey-nematode-control?gclid=CjwKCAjwns_bBRBCEiwA7AVGHjuJI5PTIQvdJwqq5h-CJyUWxCyEuy98QfUKC4XVFHa_mCWhkryhkxoC98MQAvD_BwE
+
+A research collaborator of mine at the USDA studies biological control using nematodes. Here is an abstract from a paper:
+
+### Abstract
+Movement behavior of foraging animals is critical to the determination of their spatial ecology and success in exploiting resources.  Individuals sometimes gain advantages by foraging in groups to increase their efficiency in garnering these resources.  Group movement behavior has  been studied in various vertebrates.  In this study we explored the propensity for innate group movement behavior among insect parasitic nematodes.  Given that entomopathogenic nematodes benefit from group attack and infection, we hypothesized that the populations would tend to move in aggregate in the absence of extrinsic cues.  Movement patterns of entomopathogenic nematodes in sand were investigated when nematodes were applied to a specific locus or when the nematodes emerged naturally from infected insect hosts; six nematode species in two genera were tested (Heterorhabditis bacteriophora, Heterorhabditis indica, Steinernema carpocapsae, Steinernema  feltiae, Steinernema glaseri and Steinernema  riobrave).  Nematodes were applied in aqueous suspension via filter paper discs or in infected insect host cadavers (to mimic emergence in nature).  We discovered that nematode dispersal resulted in an aggregated pattern rather than a random or uniform distribution; the only exception was S. glaseri when emerging directly from infected hosts (Shapiro-Ilan et al. 2014).  The group movement may have been continuous from the point of origin, or it may have been triggered by a propensity to aggregate after a short period of random movement.  To our knowledge, this is the first report of group movement behavior in parasitic nematodes in the absence of external stimuli (e.g., without an insect or other apparent biotic or abiotic cue).  These findings have implications for nematode spatial distribution and suggest that group behavior is involved in nematode foraging.  
+
+Quick summary:  
+1. The nematodes attack an insect.   
+2. They burrow into it, kill it, and lay eggs.   
+3. Eventually, the eggs hatch, the hatchlings burrow out of the insect carcass, and then they move out into the world.    
+4. After emergence, they look for new prey and the cycle starts again.       
+
+
+My colleague is interested in how they nematodes search for prey, and specifically in the question of whether they disperse from the carcass independently of each other or whether they move as a group. A single nematode is not capable of killing an insect by itself and needs other nematodes to help. Thus, it might be advantageous to move as a group. 
+
+In order to study this, we conducted simulations of how nematodes to disperse and made comparisons to data.I am just going to tell you about the null hypothesis case of independent movement. 
+
+### Make the rules (assumptions) that define the simulation
+
+We will assume
+
+1. The nematodes all start at a single point. 
+2. The move in 2 dimensions. 
+3. Time is divided into discrete increments. In each increment, the distance that a nematode moves is distributed as Normal(0,1) in the X-dimension and Normal(0,1)  in the Y-dimension. 
+4. Movement is independent between time steps. 
+5. Movement is independent between nematodes. 
+
+When movement follows these rules, it is known as *independent diffusive movement*
+
+## Implementing the Simulation as an R program
+
+```{r independent diffusive movement}
+
+T<-30 #number of time steps
+n<-20 #number of nematodes
+xy<-matrix(nrow=n,ncol=2) #matrix of positions xy[i,1] =x position for nematode i, xy[i,2]=y position for nematode i
+
+xinc<-matrix(rnorm(T*n),nrow=n)  #increments in x position
+yinc<-matrix(rnorm(T*n),nrow=n)  #increments in y position
+
+xinc[,1]=0   #make all start in the same location
+yinc[,1]=0
+
+xdis<-t(apply(xinc,1,cumsum))  #xdis[i,j]=total displacement in x dimension of partical i at time j
+ydis<-t(apply(yinc,1,cumsum))  #ydis[i,j]=total displacement in y dimension of partical i at time j
+
+#plot trajectories:
+matplot(t(xdis),t(ydis),type="l",xlab="x position",ylab="y position")#xlim=c(-10,10),ylim=c(-10,10))
+
+```
+
+
+The plot shows how the nematodes would move under the assumptions given. In the research project, we made comparisons of the simulation output to data and formulated other simulations models that used more complicated assumptions about movement. 
+we will not do this here. Instead, I want to focus on some aspects of the R code. 
+
+
+### Generating iid data
+
+Generating iid data is very easy to do in R. In the above example, this is done with the code
+
+```{r}
+xinc<-matrix(rnorm(T*n),nrow=n)
+
+```
+
+
+The code below produces `T*n` values from the N(0,1) distribution. 
+
+```{r} 
+T=3
+n=5
+rnorm(T*n)
+```
+
+Next, we arrange it into a matrix with rows correpsonding to different nematodes:
+
+```{r}
+matrix(rnorm(T*n),nrow=n)
+```
+
+We will use this same format many times in producing iid data. Note the compactness of this code. In many other computer languages, we would have to use loops in order to accomplish the same thing. R allows very efficient coding when the same or similar operations are repeated many times. 
+
+The iid data in the above example is the movement increments. The x and y movement for each nematode in each time step is independent of all other nematodes and time steps and always follows the same distribution. 
+
+We sum the movement increments over time steps to get the location for each nematode at each time step. We do this using the `apply` function. 
+
+
+## The apply function
+
+
+Note the use of the `apply` function:
+
+```{r eval=FALSE}
+xdis<-t(apply(xinc,1,cumsum))  #xdis[i,j]=total displacement in x dimension of partical i at time j
+ydis<-t(apply(yinc,1,cumsum))  #ydis[i,j]=total displacement in y dimension of partical i at time j
+```
+
+
+See the help page for `apply`:
+
+```{r, eval=F}
+
+?apply
+```
+
+The above examples apply the function `cumsum` to the rows (specified by the 1) of `xinc` and `yinc`. This is a very compact and computationally efficient way to apply functions to rows or columns of a matrix. 
+
+
+*Note for people coming from other computer languages:* Generally, it is best to avoid the use of loops in R and instead use built in functions. R is rather inefficient computationally when it comes to loops, especially nested loops. The built in functions typically use faster computer languages and are optimized for speed. 
+
+The function `cumsum` calculates the cumulative sum of a vector:
+
+```{r}
+cumsum(1:10)
+
+```
+
+
+The N(0,1) value in each time step is the movement for that time increment. We sum across time steps to get the displacement to a given time point. 
+
+```{r}
+xinc[1,1:10]  #first row, first ten columns of xinc
+cumsum(xinc[1,1:10])  #apply cumsum to first row, first ten columns
+
+```
+
+This gives the displacement for the first ten time steps. I just show the first ten time steps to save space. 
+
+
+```{r}
+apply(xinc[,1:10],1,cumsum)  #just showing columns 1:10 so that it will not take up a lot of room in the document
+```
+
+Note that `apply` flips the rows and columns. Now the columns are corresponding to the individual nematodes (note that there are 20 columns) and the rows correspond to time steps. 
+
+
+The function `t` is *matrix transpose*. It flips rows and columns:
+
+```{r}
+
+w=matrix(1:50,nrow=10)
+w
+t(w)
+
+
+```
+
+Using the `t` function moves the nematodes back into the row positions:
+
+
+```{r}
+t(apply(xinc[,1:10],1,cumsum)) 
+```
+
+
+Putting this all together, we get the x and y displacement relative to the start position for each nematode and time:
+
+
+```{r}
+xdis<-t(apply(xinc,1,cumsum))  #xdis[i,j]=total displacement in x dimension of partical i at time j
+ydis<-t(apply(yinc,1,cumsum)) 
+
+
+xdis[1:5,1:10]   #show for five nematodes and ten time steps
+ydis[1:5,1:10]
+```
+
+
+
+
+
+### Class Exercise
+
+Suppose that we want to modify the simulations for two extensions:
+
+1) There is a bias in there movement such that the mean for the x displacement is *D* rather than 0. 
+
+2) All nematodes are not identical. Instead, there movement standard deviation comes from a uniform(0,2) distribution. 
+
+Write code to implement these cases (separately). Make plots for case 1) that show how big the bias factor D must get before it makes a noticeable difference in the plot. 
+
+
+
+
+## Simulation Example #2: Performance of the t-test
+
+We will conduct a simulation study of the performance of the t-test. 
+
+
+*Discussion Question: What performance metrics do you think that we should be interested in?*
+
+
+### Specify the rules of the simulation
+
+1.  We will generate R=1000 replicates. In each replicate, we will generate a data set, apply the t-test, and record the result.
+
+2.  Assume a two sample t-test, where one sample is generated from $Normal(\mu_1,\sigma_1)$ and the other sample is generated from $Normal(\mu_2,\sigma_2)$
+
+3.  In each replicate, We will apply the `t.test` function in R to test for a difference in means between the two sample. We will record the p-value. 
+
+4.  The estimated probability of rejection is $\frac{\text{number of replicates with p-value<0.05}} {\text{total number of replicates}}$.
+
+5. If the $\mu_1=\mu_2$, then the probabiltiy of rejection is the type I error rate. If $\mu_1 \neq \mu_2$, then the probability of rejection is the power. 
+
+
+### Implementing the Simulation. 
+
+The code for this is potentially a bit more complicated because there are two groups. This means that we need to generate iid data for two different groups. I will show several ways to do it. 
+
+#### First approach: `replicate` function. 
+The `replicate` function allows a very simple way to do simulations. It takes input of the form `replicate(nrep,expr)`, evaluates `expr` a total of `nrep` times, and outputs the results as a vector.  
+
+```{r replicate function}
+nrep=10000 #number of simulation replicates
+N1=20 #sample size for sample #1
+N2=N1 #sample size for sample #2
+mu1=0 #true mean for sample #1
+mu2=0 #true mean for sample #2
+sd1=1 #true SD for sample #1  
+sd2=1 #true SD for sample #2
+
+#?replicate
+
+#The replicate function below 1) generates two normal samples, 2) conducts a t-test, saving the p.value and 3) repeats this nrep times. 
+
+x<-replicate(nrep,t.test(rnorm(N1,mu1,sd1),rnorm(N2,mu2,sd2))$p.value)  
+
+sum(x<0.05)/nrep  #this is the proportion of times that the null hypothesis was rejected. 
+
+
+
+```
+
+The expression `t.test(rnorm(N1,mu1,sd1),rnorm(N2,mu2,sd2))$p.value` generates two random samples from a normal distribution, uses a t-test to test for a difference in means, and output the p-value. The `replicate` function repeats this expression `nrep` times and outputs the results in a vector. 
+
+
+The output `sum(x<0.05)/nrep' is the proportion of replicates in which the null hypothesis was rejected. Because the null is true here (i.e. mu1=mu2), this gives the false positive rate. It is near 0.05 as expected. 
+
+Note this use of `sum` with a logical vector:
+
+```{r}
+
+#example:
+(y<-runif(10))  #generate 10 values from uniform(0,1)
+y<0.4    #returns T for values less than 0.4 and F for values greater than 0.4
+sum(y<0.4) #find the number of values less than 0.4. 
+
+
+
+```
+
+
+The expression `y<0.4` returns a logical vector. That is, a vector of `T` and `F` according to whether the condition is trye. 
+
+When we apply the `sum` function to this vector, it converts `T` to 1 and `F` to 0. Thus, the `sum` is equal to the number of values where the condition is met. That is, the number of values below 0.4 in the above expression and the number of values less than 0.05 in the simulation code. 
+
+
+
+####Second Approach: Defining a function
+
+The `replicate` function `replicate(n,expr)` simply repeats the expression `expr` a total of `n` times and returns the results in a vector or matrix. For example the first example below produces 20 samples of size 10 from a normal distribution. The second example produces 20 samples of size 10 and takes the mean of each one. 
+
+
+```{r}
+replicate(20,rnorm(10))
+
+replicate(20,mean(rnorm(10)))
+
+```
+
+
+The replicate function is very easy to use if we can conduct the simulation using a single expression, but it won't work for all situations. The next two approaches are more flexible. The first makes use of the `apply` function to conduct the t-test. 
+
+
+
+```{r}
+nrep=1000 #number of simulation replicates
+N1=20   #sample size for sample #1
+N2=N1   #sample size for sample #2
+mu1=0 #true mean for sample #1
+mu2=0 #true mean for sample #2
+sd1=1 #true SD for sample #1  
+sd2=1 #true SD for sample #2
+ 
+
+#generate data
+d1=matrix(rnorm(nrep*N1),nrow=nrep) #d1[i,j]=data point #j in ith replicate for first data set
+d2=matrix(rnorm(nrep*N2),nrow=nrep)
+
+#Define a function that conducts a two sample t-test on a vector. 
+#This takes the first n1 values of x as the first sample and the remaining values as the second sample. 
+#It conducts the t-test and returns the p-value. 
+t_test<-function(x,n1,n2)
+{ return(t.test(x[1:n1],x[(n1+1):(n1+n2)])$p.value)  #$p.value extracts the p-value from the output
+}
+
+#Combine the two data sets into one matrix and then apply the t_test function
+pvalues<-apply(cbind(d1,d2),1,t_test,N1,N2)
+
+#find the proportion of rejected nulls:
+sum(pvalues<0.05)/nrep
+
+```
+
+
+We needed to define the function `t_test` because I want to use the `apply` function to apply the t-test to the data matrix. There is not a way to apply the built in function t.test because the `apply` function requires that I apply the function to the entire row or colummn and then return a single value. My new function `t_test` is a wrapper function that just repackages the input and output of t.test into a form that is more convenient for this application. 
+
+#### Functions `cbind` and `rbind`
+
+Note the function `cbind` does "column bind". That is, it combines the columns to the two matrices together into one matrix:
+
+```{r}
+#Examples of cbind
+
+(m1=matrix(c(1,2,3,4,5,6,7,8,9),nrow=3))
+(m2=matrix(c(2,4,6,8,10,12,14,16,18),nrow=3))
+
+cbind(m1,m2)
+          
+(p0=rnorm(10))
+(p1=rnorm(10,mean=1))
+(p2=rnorm(10,mean=2))
+(p3=rnorm(10,mean=3))
+
+cbind(p0,p1,p2,p3)
+
+#Note that puttng parenthesis around the expressions makes R show the output
+          
+```
+
+The function `rbind` works similarly, but combines by rows instead of columns:
+
+```{r}
+(m1=matrix(c(1,2,3,4,5,6,7,8,9),nrow=3))
+(m2=matrix(c(2,4,6,8,10,12,14,16,18),nrow=3))
+
+rbind(m1,m2)
+          
+(p0=rnorm(10))
+(p1=rnorm(10,mean=1))
+(p2=rnorm(10,mean=2))
+(p3=rnorm(10,mean=3))
+
+rbind(p0,p1,p2,p3)
+```
+
+
+
+####Third Approach: Using a `for` loop
+
+The approach above is more flexible than the approach using `replicate`, but still won't work in all situations. This is because using `apply` requires that we can reduce all of our calculations to a single expression that can be applied to the data. We can define our own functions that will make this possible in many complex situations, but it is often more straightforward to use a `for` loop. 
+
+The next approach uses a `for` loop to conduct the t-test in each replicate:
+
+
+```{r}
+nrep=1000 #number of simulation replicates
+N1=20   #sample size for sample #1
+N2=N1   #sample size for sample #2
+mu1=0 #true mean for sample #1
+mu2=0 #true mean for sample #2
+sd1=1 #true SD for sample #1  
+sd2=1 #true SD for sample #2
+pval=vector(length=nrep)  #vector to contain p-values for each replicate 
+
+#generate data
+d1=matrix(rnorm(nrep*N1),nrow=nrep) #d1[i,j]=data point #j in ith replicate for first data set
+d2=matrix(rnorm(nrep*N2),nrow=nrep)
+
+for(r in 1:nrep)
+{   pval[r]=t.test(d1[r,],d2[r,])$p.value
+}
+
+sum(pval<0.05)/nrep
+
+```
+
+
+Here is yet one more way also using a `for` loop. This is how you would do the simulation in many other languages. 
+
+
+```{r}
+nrep=1000 #number of simulation replicates
+N1=20   #sample size for sample #1
+N2=N1   #sample size for sample #2
+mu1=0 #true mean for sample #1
+mu2=0 #true mean for sample #2
+sd1=1 #true SD for sample #1  
+sd2=1 #true SD for sample #2
+pval=vector(length=nrep)  #vector to contain p-values for each replicate 
+
+
+for(r in 1:nrep)
+{ d1=rnorm(N1,mu1,sd1)  #generate data sets
+  d2=rnorm(N2,mu2,sd2)
+  pval[r]=t.test(d1,d2)$p.value
+}
+
+sum(pval<0.05)/nrep
+
+```
+
+
+The difference from the previous example is that we generate the data for each replicate inside the `for` loop, rather than generating it all at once in advance as in the previous example.
+
+The first two approaches are easy to apply when we are working with one dimensional iid data. Then, we can generate all of the data for the simulation in a simple matrix format. For more complex simulations, this won't work. If, for example, the data has multiple variables, then we can't generate data for multiple replicates in a simple matrix format. Or, if the mechanisms for generating the data are more complex (e.g. not from a standard probability distribution), then the `apply` or `replicate` functions will be  more difficult to use. 
+
+
+Generally, you should use functions when they are available. These will tend to be faster computationally than your own code and also usually allow more compact code. Thus, the first method using the `replicate` function would be preferred. However, often for more complicated simulations it may be difficult to use built in functions and you may need to use other approaches. 
+Another consideration is ease of understanding of the code. R often allows for very compact code, but it can be challangeing to parse out what it is doing when you return to it later. The use of loops is often more straightfoward and easy to understand, especially for programmers less familiar with R. Ease of understanding is a very important consideration and should not be dismissed. 
+
+
+###Power for the t-test
+So far, we have only looked at the type I error rate for the t-test. Next, we will look at power. Our simulation calculates the probability of rejecting the null hypothesis. 
+
+
+\textbf{Remember: If $\mu1=\mu2$,then the probability of rejecting the null is the probability of a type I error.}
+
+\textbf{If $\mu1 \neq \mu2 $, then the probability of rejecting the null is the power.}
+
+
+The power will depend on how different $\mu1$ and $\mu2$ are from each relative to the standard deviation. Thus, we will compute plots showing how the power depends on $\mu1$ and $\mu2$.
+
+Note: the effect size for a two sample t-test is 
+
+$$
+\epsilon=\frac{\mu_1-\mu_2}{\sqrt{\frac{\sigma_1^2}{n_1}+\frac{\sigma_2^2}{n_2}}}
+$$
+
+We will keep $\mu_2=0$, $\sigma_1=\sigma_2=1$, and $n_1=n_2$. Thus, the effect size becomes
+
+$$
+\epsilon=\frac{\mu_1-0}{\sqrt{\frac{1^2}{n_1}+\frac{1^2}{n_2}}}=\frac{\mu_1}{\sqrt{\frac{2}{n_1}}}=\frac{\mu_1 \sqrt{n_1}}{\sqrt{2}}
+$$
+
+```{r}
+nrep=1000 #number of simulation replicates
+N1=20 #sample size for sample #1
+N2=N1 #sample size for sample #2
+mu1vec=seq(from=0,to=2,by=0.1) #true mean for sample #1
+mu2=0# true mean for sample #2
+
+sd1=1 #true SD for sample #1  
+sd2=1 #true SD for sample #2
+powvec<-NULL #will story power for each value of mu2
+
+for(mu1 in mu1vec)
+{ 
+    x<-replicate(nrep,t.test(rnorm(N1,mu1,sd1),rnorm(N2,mu2,sd2))$p.value)  
+    powvec=c(powvec,sum(x<0.05)/nrep)  #this is the proportion of times that the null hypothesis was rejected. 
+}    
+    
+   
+plot(mu1vec,powvec,type="l",xlab="mu2",ylab="power",main="t-test power")
+
+ 
+```
+
+
+
+The effect size depends on both sample size and the difference in means. Let's plot both:
+
+
+
+```{r}
+nrep=1000 #number of simulation replicates
+mu1=0 #true mean for sample #1
+mu2vec=seq(from=0,to=2,by=0.05) #true mean for sample #2
+sd1=1 #true SD for sample #1  
+sd2=1 #true SD for sample #2
+Nvec=c(10,20,30,40,50)
+powmat=NULL #matrix that to store power values. powmat[i,j] =power for ith sample size and jth effect size
+
+
+for(N1 in Nvec)
+{ 
+  N2=N1
+  powvec<-NULL
+  
+  for(mu2 in mu2vec)
+  { 
+      x<-replicate(nrep,t.test(rnorm(N1,mu1,sd1),rnorm(N2,mu2,sd2))$p.value)  
+      powvec=c(powvec,sum(x<0.05)/nrep)  #this is the proportion of times that the null hypothesis was rejected. 
+  }    
+    
+  powmat<-cbind(powmat,powvec) 
+  
+  
+}  
+  
+matplot(mu2vec,powmat,type="l",xlab="mu2",ylab="power",main="t-test power",lty=1:5,col=1:5)
+legend("bottomright",c("N=10","N=20","N=30","N=40","N=50"),lty=1:5,col=1:5)
+
+
+```
+
+###How many replicates should a simulation have?
+
+
+Suppose that we are conducting a simulation to estimate the probability of some event (e.g. a p-value simulation in which we are estimating the probability of a rejecting the null hypothesis when the null is true). Suppose that $p$ is the probability of the event.  If the simulation has $R$ replicates and the event occurs $M$ times, then our estimate $\hat{p}$ for the probability of the event is 
+
+$$
+\hat{p}=\frac{M}{R} $$
+	 
+This is an estimate because the number $M$ will be variable and we will likely not get exactly the same value every time. 
+	We can view the simulation as binomial sampling to estimate the probability $p$: 1) there is a fixed number $R$ independent replicates; 2) each has two possible outcomes, with the event either occurring or nor occurring; 3) the probability of the event is the same in every replicate. Thus, $M$ has a $binomial(R,p)$ distribution. From this, we know that 
+$$
+	 E(\hat{p})=p$$
+
+$$
+	 var(\hat{p})=\sqrt{\frac{p(1-p)}{R}} $$
+	 
+	 
+	 
+If R is large, then a 95% error bound for $\hat{p}$ is 
+
+
+$$
+\pm2\sqrt{\frac{p(1-p)}{R}}$$
+
+The table below compiles some values for the error bound as a function of the the $p$ and the number of replicates $R$:
+
+
+\begin{tabular}{|c|c|c|}
+  \hline
+  \textbf{p} & \textbf{R} & \textbf{Error Bound} \\
+  \hline 
+	0.5 & 100  &  0.05 \\ 
+	\hline 
+	0.5 & 1000  & 0.016  \\ 
+	\hline 
+	0.5 &  10000 & 0.005  \\ 
+	\hline 
+	0.05 & 100  & 0.022 \\ 
+	\hline 
+	0.05 & 1000  & 0.007  \\ 
+	\hline 
+	0.05 & 10000  &  0.002 \\ 
+	\hline 
+	1e-06 & 1000  & 3e-05 \\
+	\hline 
+	1e-06 & 10000  & 1e-05 \\
+	\hline
+	1e-06 & 100000  & 3e-06 \\
+	\hline 
+	1e-06 & 1e6  & 1e-06 \\
+	\hline 
+	1e-06 & 1e7  & 3e-07 \\
+	\hline 
+\end{tabular} 
+
+
+	
+If we want to estimate a probability that is on the order of 0.05, then we need on the order of 1000 replicates. If we want to estimate a small probability such as 1e-6, then we need 10 million or more replicates. 
+
+####How meaningful are differences in simulated probabilities?
+Suppose that you are using simulations to compare the statistical power of two different methods. You could use calculations like shown in the table to see whether differences are likely due to chance. For example, if the true power were 50% and you used 1000 replicates, then based on the table above you would expect to get simulated power in roughly the range $50 \% \pm 2 * 1.6 \% = 50 \% \pm 3.2 \%$
+Thus, if you compare the two methods and their simulated power is within a few percent of each other then the difference is likely sampling variation and not a true difference. If you want to be able to differentiate such power differences then you will need a larger number of replicates. 
+
+
+
+
+```
+
+
