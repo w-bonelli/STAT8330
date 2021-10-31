@@ -1,0 +1,75 @@
+---
+title: "STAT 8330 HW1"
+output:
+  pdf_document: default
+  html_notebook: default
+---
+
+# 2) Simulating confidence intervals for mean of normally distributed data
+
+Here we define a function to calculate coverage probabilities when a CI is constructed using the Z and t statistics. This function works by first generating a random dataset, then taking a number of samples with replacement, calculating a CI for the mean of each one, and determining the proportion of CIs that contain the true dataset mean.
+
+```{r}
+CI_sim <- function(p=0.95, mu=0, sd=1, N=30, R=1000) {
+  z.results = numeric(R)
+  t.results = numeric(R)
+  
+  # create normally distributed random data
+  data = c(rnorm(N, mean=mu))
+  
+  # iterate R times
+  for (i in 1:R) {
+    # sample with replacement from the data
+    s = sample(data, replace=T)
+    
+    # find the sample mean
+    m = mean(s)
+    
+    # calculate CI with z statistic
+    zlo = m + qnorm(0 + ((1 - p) / 2)) * (sd(data) / sqrt(N))
+    zhi = m + qnorm(1 - ((1 - p) / 2)) * (sd(data) / sqrt(N))
+    
+    # does the Z CI contain the mean?
+    z.results[i] = (mu >= zlo && mu <= zhi)
+    
+    # calculate CI with t statistic
+    tlo = m + qt(0 + ((1 - p) / 2), N-1) * (sd(data) / sqrt(N))
+    thi = m + qt(1 - ((1 - p) / 2), N-1) * (sd(data) / sqrt(N))
+    
+    # does the t CI contain the mean?
+    t.results[i] = (mu >= tlo && mu <= thi)
+  }
+  
+  # print tabular results
+  cat('method', '\t', 'coverage', '\n')
+  cat('t', '\t', sum(t.results) / R, '\n')
+  cat('Z', '\t', sum(z.results) / R, '\n')
+}
+
+print("P=0.95 N=10 SD=1")
+CI_sim()
+print("P=0.95 N=10 SD=40")
+CI_sim(sd=40)
+print("P=0.7 N=10 SD=1")
+CI_sim(p=0.7, sd=1)
+print("P=0.7 N=10 SD=40")
+CI_sim(p=0.7, sd=40)
+print("P=0.95 N=100 SD=1")
+CI_sim(p=0.95, sd=1, N=100)
+print("P=0.95 N=100 SD=40")
+CI_sim(p=0.95, sd=40, N=100)
+print("P=0.7 N=100 SD=1")
+CI_sim(p=0.7, sd=1, N=100)
+print("P=0.7 N=100 SD=40")
+CI_sim(p=0.7, sd=40, N=100)
+print("P=0.95 N=100000 SD=1")
+CI_sim(p=0.95, sd=1, N=100000)
+print("P=0.95 N=100000 SD=40")
+CI_sim(p=0.95, sd=40, N=100000)
+print("P=0.7 N=100000 SD=1")
+CI_sim(p=0.7, sd=1, N=100000)
+print("P=0.7 N=100000 SD=40")
+CI_sim(p=0.7, sd=40, N=100000)
+```
+
+The t-statistic's coverage probability is consistently greater than or equal to the Z-statistic's. As N increases, the two statistics' coverage probabilities converge both to one another and to the target.

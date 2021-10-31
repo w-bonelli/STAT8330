@@ -1,0 +1,97 @@
+---
+title: "STAT 8330 HW3"
+output: html_notebook
+---
+
+# 2) Simulation of K-folds cross-validation
+
+First, generate a noisy segment of a sine wave.
+
+```{r}
+# adapted from https://stackoverflow.com/questions/32111941/r-how-to-generate-a-noisy-sine-function
+n = 100
+t = seq(0, 1.2*pi, , n)
+X = seq(1, n)
+y = jitter(2*sin(t), amount = 2)
+sine = 2*sin(t)
+frame = data.frame(X=X, y=y, sine=sine)
+plot(x, y)
+```
+
+Next, simulate K-folds cross-validation for N = 100 and K = 2, 5, 10, 50, 100.
+
+```{r}
+# import deps
+library(ggplot2)
+
+# fit a degree-4 polynomial model
+glm.fit = glm(y ~ poly(X, 4), data=frame)
+frame$predicted = predict(glm.fit)
+frame$residuals = residuals(glm.fit)
+
+# plot the full fit
+ggplot(frame, aes(x=X, y=y)) +
+  geom_point(aes(color=residuals)) +
+  geom_line(aes(x=X, y=sine, color=1)) +
+  geom_line(aes(x=X, y=predicted, color=5)) +
+  guides(color = FALSE, size = FALSE, shape = FALSE, alpha = FALSE) +
+  theme_bw() +
+  labs(title=paste("Noisy sine curve, N =", n))
+
+# save plot
+ggsave(paste0('plot.png'))
+
+# numbers of folds to test with
+kvals = c(2, 5, 10, 50, 100)
+
+# initialize vector to store MSE values
+cv.error = rep(0, length(kvals))
+
+# loop through each value of K
+# strategy adapted from https://stats.stackexchange.com/a/105839/338214
+for (i in 1:length(kvals)) {
+  k = kvals[i]
+  
+  # shuffle
+  frame = frame[sample(nrow(frame)),]
+
+  # create K folds
+  folds = cut(seq(1, nrow(frame)), breaks=k, labels=FALSE)
+
+  # vector to hold MSEs to average over
+  errors = rep(0, length(seq(k)))
+  
+  # loop over folds and average MSE
+  for(j in 1:seq(k)) {
+    # partition data
+    indices = which(folds==j, arr.ind=TRUE)
+    training = frame[-indices,]
+    testing = frame[indices,]
+    
+    # fit a degree-4 polynomial model
+    glm.fit = glm(y ~ poly(x, 4), data=frame, subset=training$X)
+    
+    # calculate and record MSE
+    errors[i] = mean((y - predict(glm.fit, frame))[testing$X]^2)
+  }
+  
+  # calculate and record avg MSE
+  avg.mse = mean(errors)
+  cv.error[i] = avg.mse
+}
+
+# print tabular results
+cat('K', '\t', 'MSE', '\n')
+for (i in 1:length(kvals)) {
+  cat(kvals[i], '\t', cv.error[i], '\n')
+}
+
+# plot MSE vs fold count
+ggplot(data.frame(kvals, cv.error), aes(x=kvals, y=cv.error)) +
+  geom_line(aes(x=kvals, y=cv.error)) +
+  guides(color = FALSE, size = FALSE, shape = FALSE, alpha = FALSE) +
+  theme_bw() +
+  labs(title=paste("MSE vs Number of Folds, N = 100"), x="K", y="MSE")
+```
+
+The results here parallel those described in the source (https://stats.stackexchange.com/questions/61783/bias-and-variance-in-leave-one-out-vs-k-fold-cross-validation), in that MSE gradually converges to its minimum as the number of folds approaches the number of rows, i.e., the LOOCV case.
