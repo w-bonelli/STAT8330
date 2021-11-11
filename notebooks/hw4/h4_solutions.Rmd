@@ -109,7 +109,7 @@ This scenario involves 50 simulated trials, each with 600 total observations of 
 
 ### Scenario d)
 
-This final scenario involves 50 trials of 500 total observations and 40 weighted predictors. This time several groups of predictors are generated from the same sample from the normal distribution, modulo error terms. Another group of predictors are i.i.d. as before. This introduces a need for grouped selection, since the predictors in each group $i = 1, \ldots , 5$, $i = 6, \ldots , 10$, and $i = 11, \ldots , 15$ will be highly correlated.
+This final scenario involves 50 trials of 500 total observations and 40 weighted predictors. This time most predictors are i.i.d. as before, but 3 groups of 5 predictors are generated from the same respective sample (modulo error terms), introducing multicollinearity. Since the predictors in each group $i = 1, \ldots , 5$, $i = 6, \ldots , 10$, and $i = 11, \ldots , 15$ will be highly correlated within respective groups, grouped selection is necessary.
 
 ```{r}
 
