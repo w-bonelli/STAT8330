@@ -1,0 +1,119 @@
+---
+title: "STAT 8830 HW4"
+output: html_notebook
+---
+
+# 2) Reproduction of Zou & Hastie (2005) 
+
+Here we reproduce the simulations in the referenced work to compare ridge regression, LASSO, and elastic net.
+
+First import dependencies and set the random seed.
+```{r}
+# import dependencies
+library(faux)
+library(leaps)
+library(glmnet)
+
+# set the random seed
+set.seed(42)
+```
+
+## Scenarios
+
+The 4 scenarios presented in section 5 are designed to explore the performance of elastic net against ridge regression and LASSO in various settings. All scenarios use a simulated linear model with a normally distributed error term (centered around 0 with standard deviation 1).
+
+First we define a function to generate datasets.
+
+```{r}
+generate.dataset = function(n, p, b, mu, sd, R, varnames) {
+  #' Generates a simulated dataset with normally distributed columns.
+  #'
+  #' @param n The number of observations.
+  #' @param p The number of predictors.
+  #' @param b The beta values for each predictor (must be a vector of length p)
+  #' @param mu The target mean
+  #' @param sd The target standard deviation
+  #' @param R The target correlation matrix for the predictors
+  #' @param varnames The column names
+  
+  # make sure arguments are valid
+  if (p != length(b)) stop('Must provide p values of beta')
+  if (p != dim(R)[1]) stop('Must provide a p x p correlation matrix')
+  
+  # generate the dataset, using the faux library
+  # documented here: https://debruine.github.io/faux/reference/rnorm_multi.html
+  df = rnorm_multi(n, p, mu, sd, R, varnames=varnames)
+  
+  # debugging: make sure correlations between generated predictors approximate targets
+  # print(R)
+  # print(cor(df))
+ 
+  # calculate response and attach to data frame
+  df$Y = sum(sapply(1:p, function(i) b[i] * df[, i])) +   # predictor terms
+         rnorm(n, 0, 1)                                   # error term 
+  
+  # return the frame
+  df
+}
+
+```
+
+
+### Scenario a)
+
+Scenario a) involves 50 simulated datasets, each with 240 total observations of 8 differently-weighted predictors. We want to generate data with predictors correlated according to:
+
+$ R = \begin{bmatrix} 1 & 0.5 & 0.25 & 0.125 & 0.0625 & 0.03125 & 0.015625 & 0.0078125 \\ 0.5 & 1 & 0.5 & 0.25 & 0.125 & 0.0625 & 0.03125 & 0.015625 \\ 0.25 & 0.5 & 1 & 0.5 & 0.25 & 0.125 & 0.0625 & 0.03125 \\ 0.125 & 0.25 & 0.5 & 1 & 0.5 & 0.25 & 0.125 & 0.0625 \\ 0.0625 & 0.125 & 0.25 & 0.5 & 1 & 0.5 & 0.25 & 0.125 \\ 0.03125 & 0.0625 & 0.125 & 0.25 & 0.5 & 1 & 0.5 & 0.25 \\ 0.015625 & 0.03125 & 0.0625 & 0.125 & 0.25 & 0.5 & 1 & 0.5 \\ 0.0078125 & 0.015625 & 0.03125 & 0.0625 & 0.125 & 0.25 & 0.5 & 1 \end{bmatrix} $
+
+```{r}
+t = 50                                                     # 50 simulated trials
+n = 240                                                    # 20/20/200
+p = length(b)                                              # 8 predictors
+b = c(3, 1.5, 0, 0, 2, 0, 0, 0)                            # betas
+cc = function(i) 0.5 ** abs(seq(1, p) - i)                 # correlations for j's given i
+R = matrix(unlist(lapply(seq(1, p), cc)), nrow=p, ncol=p)  # correlation matrix
+
+for (t in 1:trials) {
+  # generate a simulated dataset
+  df = generate.dataset(n, p, b, 0, 1, R, paste0('X', 1:p))
+  
+  # split train, test, and validation subsets
+  # adapted from https://stackoverflow.com/a/36069362/6514033
+  splits = c(train = .0833, test = .0833, validate = .8333)
+  groups = sample(cut(
+    seq(nrow(df)), 
+    nrow(df) * cumsum(c(0, splits)),
+    labels = names(splits)
+  ))
+  sets = split(df, groups)
+  
+  
+}
+```
+
+### Scenario b)
+
+This scenario is identical to a), except we use a constant predictor weight $ \beta = 0.85 $
+
+```{r}
+
+```
+
+### Scenario c)
+
+This scenario involves 50 simulated trials, each with 600 total observations of 40 weighted predictors. This time we introduce an error term with greater variance (standard deviation $ \sigma = 15 $) and a constant correlation of $0.5$ for all pairs of predictors.
+
+```{r}
+
+```
+
+### Scenario d)
+
+This final scenario involves 50 trials of 500 total observations and 40 weighted predictors. This time several groups of predictors are generated from the same sample from the normal distribution, modulo error terms. Another group of predictors are i.i.d. as before. This introduces a need for grouped selection, since the predictors in each group $i = 1, \ldots , 5$, $i = 6, \ldots , 10$, and $i = 11, \ldots , 15$ will be highly correlated.
+
+```{r}
+
+```
+
+
+
