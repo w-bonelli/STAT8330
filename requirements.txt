@@ -1,7 +1,9 @@
 numpy
 scipy
 pandas
+plotly
 tabulate
 matplotlib
 statsmodels
 scikit-learn
+jupyterlab

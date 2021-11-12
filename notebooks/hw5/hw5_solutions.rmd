@@ -7,11 +7,14 @@ output: html_document
 
 Here we define a function to perform LOESS regression as a function of 1-dimensional data, a bandwidth parameter, and the number of (evenly spaced) points to predict over.
 
+This notebook is ported more or less directly from `hw5_solutions.ipynb` and so again takes much inspiration from [this](https://github.com/joaofig/pyloess/blob/e6d12ee503fd4f924273f7cb139a10ab4e096752/pyloess/Loess.py) and [this](https://xavierbourretsicotte.github.io/loess.html).
+
 First define some utility functions, for:
 
-- array normalization
+- jitter (random noise)
 - point normalization
-- weight distribution (tricubic bell curve)
+- computing band indices from bandwidth
+- computing band index weights
 
 ```{r}
 # set the random seed
