@@ -1,0 +1,19 @@
+---
+title: "STAT 8830 HW5"
+output: html_document
+---
+
+# 1) Local linear regression (LOESS)
+
+Here we define a function to perform LOESS regression as a function of 1-dimensional data, a bandwidth parameter, and the number of (evenly spaced) points to predict over.
+
+First define some utility functions, for:
+
+- array normalization
+- point normalization
+- weight distribution (tricubic bell curve)
+
+```{r}
+# set the random seed
+set.seed(42)
+```
