@@ -11,15 +11,77 @@ This notebook is ported more or less directly from `hw5_solutions.ipynb` and so 
 
 First define some utility functions, for:
 
-- jitter (random noise)
 - point normalization
 - computing band indices from bandwidth
 - computing band index weights
 
+Jitter is no longer necessary because it's built into R.
+
 ```{r}
 # set the random seed
 set.seed(42)
+
+rescale = function(value, r_min, r_max, t_min=0, t_max=1) {
+    (value - r_min) / (r_max - r_min) * (t_max - t_min) + t_min
+}
+
+get_band = function(distances, width) {
+    min_i = which.min(distances)
+    total = length(distances)
+    band = c(min_i)
+
+    # if the closest neighbor is at either the left or right bound, start the window there
+    if (min_i == 1) return(seq(1, length.out=width))
+    if (min_i == total) return(seq(total - width + 1, length.out=width))
+
+    # otherwise build it up iteratively
+    while(length(band) < width) {
+        min_i = head(band, n=1)
+        max_i = tail(band, n=1)
+        if (min_i == 1) band = c(band, c(max_i + 1))
+        else if (max_i == total) band = c(c(min_i), band)
+        else if (distances[min_i - 1] < distances[max_i + 1]) band = c(c(min_i - 1), band)
+        else band = c(band, c(max_i + 1))
+    }
+
+    # return the band
+    c(band)
+}
+
+get_weights = function(distances, band) {
+    normed_ds = distances[band] / max(distances[band])
+    bandwidth = length(band)
+    mu = 0
+    std = bandwidth * sd(normed_ds)
+    x = seq(mu - std, mu + std, length.out=length(normed_ds))
+    weights = dnorm(x, mu, std)
+    weights
+}
 ```
+
+Test the utility functions.
+
+```{r}
+rescale(3, 1, 5, 0, 1)
+
+distances = c(0.1, 0, 0.12, 0.25, 0.5, 0.75, 1)
+band = get_band(distances, 4)
+get_weights(distances, band)
+```
+
+Define the function to perform LOESS regression.
+
+```{r}
+
+```
+
+Generate a sine wave as a simulated dataset to attempt to fit, then test the LOESS function with various levels of noise and bandwidth values.
+
+```{r}
+
+```
+
+As in Python, overfitting occurs with high point count and low bandwidth. Performance again improves for higher bandwidths, with a point count of approximately half the length of the original dataset seems generally to perform better than alternatives.
 
 # 2) Kernel density estimation
 
