@@ -17,3 +17,19 @@ First define some utility functions, for:
 # set the random seed
 set.seed(42)
 ```
+
+# 2) Kernel density estimation
+
+Here we define a function to perform KDE.
+
+First define some utility functions, for:
+
+- the kernel (normal distribution)
+-
+
+links:
+- https://www.rdocumentation.org/packages/stats/versions/3.6.2/topics/bandwidth
+
+```{r}
+
+```
