@@ -5,7 +5,7 @@ output: html_document
 
 # 1) Local linear regression (LOESS)
 
-Here we define a function to perform LOESS regression as a function of 1-dimensional data, a bandwidth parameter, and the number of (evenly spaced) points to predict over.
+Here we define a function to perform LOESS regression on 1-dimensional data, accepting a bandwidth parameter and the number of (evenly spaced) points to predict over.
 
 This notebook is ported more or less directly from `hw5_solutions.ipynb` and so again takes much inspiration from [this](https://github.com/joaofig/pyloess/blob/e6d12ee503fd4f924273f7cb139a10ab4e096752/pyloess/Loess.py) and [this](https://xavierbourretsicotte.github.io/loess.html).
 
@@ -21,7 +21,7 @@ Jitter is no longer necessary because it's built into R.
 # set the random seed
 set.seed(42)
 
-rescale = function(value, r_min, r_max, t_min=0, t_max=1) {
+rescale_valu = function(value, r_min, r_max, t_min=0, t_max=1) {
     (value - r_min) / (r_max - r_min) * (t_max - t_min) + t_min
 }
 
@@ -72,7 +72,54 @@ get_weights(distances, band)
 Define the function to perform LOESS regression.
 
 ```{r}
+myloess = function(dat, bandwidth, num_pts) {
+    # extract the predictor and response and compute their respective min and max values
+    xs = dat[,0]
+    x_min = min(xs)
+    x_max = max(xs)
 
+    # extract the response
+    ys = dat[,1]
+    y_min = min(ys)
+    y_max = max(ys)
+
+    # scale the predictor and response to unit interval
+    normed_xs = rescale(xs, c(x_min, x_max), c(0, 1))
+    normed_ys = rescale(ys, c(y_min, y_max), c(0, 1))
+
+    # predict n evenly spaced points over the output range
+    output_xs = seq(x_min, x_max, length.out=num_pts)
+    output_ys = c()
+
+    for (x in output_xs) {
+        # rescale the value to the unit interval
+        normed_x = rescale_value(x, c(x_min, x_max))
+
+        # compute distances from this value to all other values
+        distances = abs(normed_xs - normed_x)
+
+        # get the indices of the band around the current points
+        band_is = get_band(distances, bandwidth)
+
+        # get weights for elements of the band
+        weights = get_weights(distances, band_is)
+
+        # get the subsets of the normed predictor and response corresponding to the band
+        band_xs = normed_xs[band_is]
+        band_ys = normed_ys[band_is]
+
+        # fit weighted least squares model to the band
+        wls = lm(band_ys ~ band_xs, weight=weights)
+        wls_y = predict(wls, normed_x)
+
+        output_ys = c(output_ys, c(wls_y))
+    }
+      print(output_ys)
+
+  # rescale the response to the original interval
+      output_ys = rescale(output_ys, c(0, 1), c(x_ymin, y_max))
+
+    data.frame(X=output_xs, Y=output_ys}
 ```
 
 Generate a sine wave as a simulated dataset to attempt to fit, then test the LOESS function with various levels of noise and bandwidth values.
