@@ -18,10 +18,14 @@ First define some utility functions, for:
 Jitter is no longer necessary because it's built into R.
 
 ```{r}
+# load dependencies
+library(scales)
+library(ggplot2)
+
 # set the random seed
 set.seed(42)
 
-rescale_valu = function(value, r_min, r_max, t_min=0, t_max=1) {
+rescale_value = function(value, r_min, r_max, t_min=0, t_max=1) {
     (value - r_min) / (r_max - r_min) * (t_max - t_min) + t_min
 }
 
@@ -31,8 +35,8 @@ get_band = function(distances, width) {
     band = c(min_i)
 
     # if the closest neighbor is at either the left or right bound, start the window there
-    if (min_i == 1) return(seq(1, length.out=width))
-    if (min_i == total) return(seq(total - width + 1, length.out=width))
+    if (min_i == 1) return(seq(1, width))
+    if (min_i == total) return(seq(total - width, total))
 
     # otherwise build it up iteratively
     while(length(band) < width) {
@@ -59,41 +63,31 @@ get_weights = function(distances, band) {
 }
 ```
 
-Test the utility functions.
-
-```{r}
-rescale(3, 1, 5, 0, 1)
-
-distances = c(0.1, 0, 0.12, 0.25, 0.5, 0.75, 1)
-band = get_band(distances, 4)
-get_weights(distances, band)
-```
-
 Define the function to perform LOESS regression.
 
 ```{r}
 myloess = function(dat, bandwidth, num_pts) {
     # extract the predictor and response and compute their respective min and max values
-    xs = dat[,0]
+    xs = dat$x
     x_min = min(xs)
     x_max = max(xs)
 
     # extract the response
-    ys = dat[,1]
+    ys = dat$y
     y_min = min(ys)
     y_max = max(ys)
 
     # scale the predictor and response to unit interval
-    normed_xs = rescale(xs, c(x_min, x_max), c(0, 1))
-    normed_ys = rescale(ys, c(y_min, y_max), c(0, 1))
-
+    normed_xs = rescale(xs, c(0, 1), c(x_min, x_max))
+    normed_ys = rescale(ys, c(0, 1), c(y_min, y_max))
+    
     # predict n evenly spaced points over the output range
     output_xs = seq(x_min, x_max, length.out=num_pts)
     output_ys = c()
 
     for (x in output_xs) {
         # rescale the value to the unit interval
-        normed_x = rescale_value(x, c(x_min, x_max))
+        normed_x = rescale_value(x, x_min, x_max)
 
         # compute distances from this value to all other values
         distances = abs(normed_xs - normed_x)
@@ -107,25 +101,57 @@ myloess = function(dat, bandwidth, num_pts) {
         # get the subsets of the normed predictor and response corresponding to the band
         band_xs = normed_xs[band_is]
         band_ys = normed_ys[band_is]
-
+        
+        data = data.frame(x=band_xs, y=band_ys)
+        # print(data)
+        
         # fit weighted least squares model to the band
-        wls = lm(band_ys ~ band_xs, weight=weights)
-        wls_y = predict(wls, normed_x)
-
-        output_ys = c(output_ys, c(wls_y))
+        wls = lm(y ~ x, data=data, weight=weights)
+        wls_y = predict(wls, data.frame(x=normed_x))
+        
+        # save predicted value
+        output_ys = c(output_ys, c(wls_y[[1]]))
     }
-      print(output_ys)
 
-  # rescale the response to the original interval
-      output_ys = rescale(output_ys, c(0, 1), c(x_ymin, y_max))
+    # rescale the response to the original interval
+    output_ys = rescale(output_ys, c(y_min, y_max), c(0, 1))
 
-    data.frame(X=output_xs, Y=output_ys}
+    data.frame(X=output_xs, Y=output_ys)
+}
 ```
 
 Generate a sine wave as a simulated dataset to attempt to fit, then test the LOESS function with various levels of noise and bandwidth values.
 
 ```{r}
+n = 100
+x = seq(0, 2*pi, length.out=n)
+sine = 2*sin(x)
+noises = c(.1, .5, 1)
+lambdas = c(3, 5, 10, 20)
+points = c(as.integer(n / 10), as.integer(n / 4), as.integer(n / 2))
 
+# try the LOESS function with each combination of noise, bandwidth, and point coun
+for (noise in noises) {
+  for (l in lambdas) {
+    for (pts in points) {
+      # simulate noisy sampling
+      y = sapply(sine, function(i) jitter(i, amount=noise))
+      frame = data.frame(x=x, y=y)
+      
+      # apply LOESS
+      result = myloess(frame, l, pts)
+      
+      # create plot
+      p = ggplot(frame) +
+        geom_line(aes(x=x, y=sine, color='truth')) +
+        geom_point(aes(x=x, y=y, color='noisy')) +
+        geom_line(data=result, aes(x=X, y=Y, color='loess')) +
+        theme_bw() +
+        labs(title=paste("Noisy sine curve, N =", n, ", noise = ", noise, ", bandwidth = ", l, ", points = ", pts))
+      print(p)
+    }
+  }
+}
 ```
 
 As in Python, overfitting occurs with high point count and low bandwidth. Performance again improves for higher bandwidths, with a point count of approximately half the length of the original dataset seems generally to perform better than alternatives.
