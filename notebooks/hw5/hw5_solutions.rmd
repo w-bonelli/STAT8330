@@ -103,7 +103,6 @@ myloess = function(dat, bandwidth, num_pts) {
         band_ys = normed_ys[band_is]
         
         data = data.frame(x=band_xs, y=band_ys)
-        # print(data)
         
         # fit weighted least squares model to the band
         wls = lm(y ~ x, data=data, weight=weights)
@@ -158,16 +157,105 @@ As in Python, overfitting occurs with high point count and low bandwidth. Perfor
 
 # 2) Kernel density estimation
 
-Here we define a function to perform KDE.
-
-First define some utility functions, for:
-
-- the kernel (normal distribution)
--
-
-links:
-- https://www.rdocumentation.org/packages/stats/versions/3.6.2/topics/bandwidth
+Here we define kernel density estimation as a function of an input vector $y$, a bandwidth $bw$, and a point count $n$.
 
 ```{r}
-
+kde = function(y, bw, n=500) {
+  if (bw == 'SJ') bw = 'SJ-ste'
+  model = density(y, bw=bw, n=n)
+  model
+}
 ```
+
+Define a function to generate data from a bimodal distribution.
+
+```{r}
+generate_bimodal = function(mu1, mu2, sd1, sd2, n, weight=0.5) {
+  spl = as.integer(n / 2)
+  x1 = rnorm(as.integer(n * weight), mean=mu1, sd=sd1)
+  x2 = rnorm(n - spl, mean=mu2, sd=sd2)
+  c(c(x1), (x2))
+}
+```
+
+Generate datasets from the bimodal distribution and test the KDE function for different bandwidth values and amounts of noise.
+
+```{r}
+# set parameters
+mu1 = 0
+mu2 = 7
+sd1 = 1
+sd2 = 2
+n = 300
+w = 0.2
+
+noises = c(.1, .5, 1)                                                 # different amounts of noise to add to samples
+lambdas = c(0.2, 0.5, 1, 3)                                           # manual bandwidths to try
+lambda_selection_methods = c('nrd0', 'nrd', 'SJ')                     # bandwidth selection methods
+points = c(as.integer(n / 10), as.integer(n / 4), as.integer(n / 2))  # different point counts to try
+
+for (noise in noises){
+    for (l in lambdas) {
+        for (pts in points) {
+            # generate samples from bimodal distribution
+            y = generate_bimodal(mu1, mu2, sd1, sd2, n, w)
+            
+            # apply noise
+            noisy_y = sapply(y, function(i) jitter(i, amount=noise))
+
+            # summarize data
+            y_min = min(y)
+            y_max = max(y)
+            y_std = sd(y)
+            y_lo = y_min - y_std
+            y_hi = y_max + y_std
+            y_dom = seq(y_lo, y_hi, length.out=n)
+
+            # fit kernel density model on noisy data
+            kde_model = kde(noisy_y, l, pts)
+            kde_result = data.frame(x=kde_model$x, y=kde_model$y)
+            
+            # create plot
+            p = ggplot(kde_result) +
+              geom_line(aes(x=x, y=y, color='KDE')) +
+              geom_line(data=data.frame(x=y, y=dnorm(y, mu1, sd1)), aes(x=x, y=y, color='left true')) +
+              geom_line(data=data.frame(x=y, y=dnorm(y, mu2, sd2)), aes(x=x, y=y, color='right true')) +
+              theme_bw() +
+              labs(title=paste0("Bimodal ", w * 100, "% left ", (1 - w) * 100, "% right, N = ", n, ", noise = ", noise, ", bandwidth = ", l, ", points = ", pts))
+            print(p)
+        }
+    }
+  
+  for (l in lambda_selection_methods) {
+        for (pts in points) {
+            # generate samples from bimodal distribution
+            y = generate_bimodal(mu1, mu2, sd1, sd2, n, w)
+            
+            # apply noise
+            noisy_y = sapply(y, function(i) jitter(i, amount=noise))
+
+            # summarize data
+            y_min = min(y)
+            y_max = max(y)
+            y_std = sd(y)
+            y_lo = y_min - y_std
+            y_hi = y_max + y_std
+            y_dom = seq(y_lo, y_hi, length.out=n)
+
+            # fit kernel density model on noisy data
+            kde_model = kde(noisy_y, l, pts)
+            kde_result = data.frame(x=kde_model$x, y=kde_model$y)
+            
+            # create plot
+            p = ggplot(kde_result) +
+              geom_line(aes(x=x, y=y, color='KDE')) +
+              geom_line(data=data.frame(x=y, y=dnorm(y, mu1, sd1)), aes(x=x, y=y, color='left true')) +
+              geom_line(data=data.frame(x=y, y=dnorm(y, mu2, sd2)), aes(x=x, y=y, color='right true')) +
+              theme_bw() +
+              labs(title=paste0("Bimodal, N = ", n, ", noise = ", noise, ", bandwidth = ", l, ", points = ", pts))
+            print(p)
+        }
+    }
+}
+```
+
