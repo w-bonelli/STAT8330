@@ -7,12 +7,16 @@ output: html_notebook
 
 Here we reproduce the simulations in the referenced work to compare ridge regression, LASSO, and elastic net.
 
-First import dependencies and set the random seed.
+First, import dependencies and set the random seed.
+
 ```{r}
 # import dependencies
 library(faux)
 library(leaps)
 library(glmnet)
+library(dplyr)
+library(tidyr)
+library(Rcpp)
 
 # set the random seed
 set.seed(42)
@@ -25,7 +29,7 @@ The 4 scenarios presented in section 5 are designed to explore the performance o
 First we define a function to generate datasets.
 
 ```{r}
-generate.dataset = function(n, p, b, mu, sd, R, varnames) {
+generate_dataset = function(n, p, b, mu, sd, R, varnames) {
   #' Generates a simulated dataset with normally distributed columns.
   #'
   #' @param n The number of observations.
@@ -61,34 +65,104 @@ generate.dataset = function(n, p, b, mu, sd, R, varnames) {
 
 ### Scenario a)
 
-Scenario a) involves 50 simulated datasets, each with 240 total observations of 8 differently-weighted predictors. We want to generate data with predictors correlated according to:
+Scenario a) involves 500 trials of 50 simulated datasets, each with 240 total observations of 8 differently-weighted predictors. We want to generate data with predictors correlated according to:
 
 $ R = \begin{bmatrix} 1 & 0.5 & 0.25 & 0.125 & 0.0625 & 0.03125 & 0.015625 & 0.0078125 \\ 0.5 & 1 & 0.5 & 0.25 & 0.125 & 0.0625 & 0.03125 & 0.015625 \\ 0.25 & 0.5 & 1 & 0.5 & 0.25 & 0.125 & 0.0625 & 0.03125 \\ 0.125 & 0.25 & 0.5 & 1 & 0.5 & 0.25 & 0.125 & 0.0625 \\ 0.0625 & 0.125 & 0.25 & 0.5 & 1 & 0.5 & 0.25 & 0.125 \\ 0.03125 & 0.0625 & 0.125 & 0.25 & 0.5 & 1 & 0.5 & 0.25 \\ 0.015625 & 0.03125 & 0.0625 & 0.125 & 0.25 & 0.5 & 1 & 0.5 \\ 0.0078125 & 0.015625 & 0.03125 & 0.0625 & 0.125 & 0.25 & 0.5 & 1 \end{bmatrix} $
 
 ```{r}
-t = 50                                                     # 50 simulated trials
-n = 240                                                    # 20/20/200
+t = 500                                                    # 500 trials
+d = 50                                                     # 50 simulated datasets
+n = 240                                                    # 240 observations
+s = c(train = .0833, validate = .0833, test = .8333)       # split 20/20/200
+b = c(3, 1.5, 0, 0, 2, 0, 0, 0)                            # beta values
 p = length(b)                                              # 8 predictors
-b = c(3, 1.5, 0, 0, 2, 0, 0, 0)                            # betas
 cc = function(i) 0.5 ** abs(seq(1, p) - i)                 # correlations for j's given i
 R = matrix(unlist(lapply(seq(1, p), cc)), nrow=p, ncol=p)  # correlation matrix
 
-for (t in 1:trials) {
-  # generate a simulated dataset
-  df = generate.dataset(n, p, b, 0, 1, R, paste0('X', 1:p))
+lasso_coef_meds = c()
+net_coef_meds = c()
+
+ridge_mse_meds = c()
+lasso_mse_meds = c()
+net_mse_meds = c()
+
+for (ti in 1:t) {
   
-  # split train, test, and validation subsets
-  # adapted from https://stackoverflow.com/a/36069362/6514033
-  splits = c(train = .0833, test = .0833, validate = .8333)
-  groups = sample(cut(
-    seq(nrow(df)), 
-    nrow(df) * cumsum(c(0, splits)),
-    labels = names(splits)
-  ))
-  sets = split(df, groups)
+  lasso_coefs = c()
+  net_coefs = c()
   
+  ridge_mses = c()
+  lasso_mses = c()
+  net_mses = c()
+
+  for (di in d) {
+    # generate a simulated dataset
+    df = generate_dataset(n, p, b, 0, 1, R, paste0('X', 1:p))
+    
+    # split train, validation, and test sets
+    # adapted from https://stackoverflow.com/a/36069362/6514033
+    splits = c(train = .0833, test = .0833, validate = .8333)
+    sets = split(df, sample(cut(
+      seq(nrow(df)), 
+      nrow(df) * cumsum(c(0, s)),
+      labels = names(s)
+    )))
+    train = sets[[1]]
+    val = sets[[2]]
+    test = sets[[3]]
+    
+    # prepare data for models
+    train_x = model.matrix(Y ~ ., train)
+    train_y = train$Y
+    test_x = model.matrix(Y ~ ., test)
+    test_y = test$Y
+    val_x = model.matrix(Y ~ ., val)
+    val_y = val$Y
+    
+    # define lambda values
+    grid = 10^seq(10, -2, length=100)
+    
+    # ridge regression
+    ridge = glmnet(train_x, train_y, alpha=0, lambda=grid)          # fit on training set
+    cv.out = cv.glmnet(val_x, val_y, alpha=0)                       # tune on validation set
+    ridge_pred = predict(ridge, s=cv.out$lambda.min, newx=test_x)   # predict on test set
+    ridge_mses = c(ridge_mses, mean((ridge_pred - test_y) ^ 2))       # store MSE
+    
+    # LASSO
+    lasso = glmnet(train_x, train_y, alpha=1, lambda=grid)
+    cv.out = cv.glmnet(val_x, val_y, alpha=1)
+    lasso_lmin = cv.out$lambda.min
+    lasso_pred = predict(lasso, s=lasso_lmin, newx=test_x)
+    lasso_mses = c(lasso_mses, mean((lasso_pred - test_y) ^ 2))
+    lasso_coef = predict(lasso, type='coefficients', s=lasso_lmin)
+    lasso_coefs = c(lasso_coefs, sum(lasso_coef != 0))
+    
+    # elastic net
+    net = glmnet(train_x, train_y, lambda=grid)
+    cv.out = cv.glmnet(val_x, val_y)
+    net_lmin = cv.out$lambda.min
+    net_pred = predict(net, s=net_lmin, newx=test_x)
+    net_mses = c(net_mses, mean((net_pred - test_y) ^ 2))
+    net_coef = predict(net, type='coefficients', s=net_lmin)
+    net_coefs = c(net_coefs, sum(net_coef != 0))
+  }
   
+  lasso_coef_meds = c(lasso_coef_meds, median(lasso_coefs))
+  net_coef_meds = c(net_coef_meds, median(net_coefs))
+  
+  ridge_mse_meds = c(ridge_mse_meds, median(ridge_mses))
+  lasso_mse_meds = c(lasso_mse_meds, median(lasso_mses))
+  net_mse_meds = c(net_mse_meds, median(net_mses))
 }
+
+s1_mses = data.frame(Ridge=ridge_mse_meds, Lasso=lasso_mse_meds, Enet=net_mse_meds)
+boxplot(s1_mses, main='Scenario 1', xlab='Method', ylab='MSE')
+
+med_coefs = data.frame(c('Lasso', 'Elastic net'), c(median(lasso_coef_meds), median(net_coef_meds)))
+med_mses = data.frame(c('Ridge regression', 'Lasso', 'Elastic net'), c(mean(ridge_mse_meds), mean(lasso_mse_meds), mean(net_mse_meds)))
+
+names(med_coefs) = c('Method', 'Scenario1')
+names(med_mses) = c('Method', 'Scenario1')
 ```
 
 ### Scenario b)
@@ -96,20 +170,171 @@ for (t in 1:trials) {
 This scenario is identical to a), except we use a constant predictor weight $ \beta = 0.85 $
 
 ```{r}
+b = rep(0.85, 8)  # constant beta
 
+lasso_coef_meds = c()
+net_coef_meds = c()
+
+ridge_mse_meds = c()
+lasso_mse_meds = c()
+net_mse_meds = c()
+
+for (ti in 1:t) {
+  
+  lasso_coefs = c()
+  net_coefs = c()
+  
+  ridge_mses = c()
+  lasso_mses = c()
+  net_mses = c()
+
+  for (di in d) {
+    df = generate_dataset(n, p, b, 0, 1, R, paste0('X', 1:p))
+    
+    sets = split(df, sample(cut(
+      seq(nrow(df)), 
+      nrow(df) * cumsum(c(0, s)),
+      labels = names(s)
+    )))
+    train = sets[[1]]
+    val = sets[[2]]
+    test = sets[[3]]
+    
+    train_x = model.matrix(Y ~ ., train)
+    train_y = train$Y
+    test_x = model.matrix(Y ~ ., test)
+    test_y = test$Y
+    val_x = model.matrix(Y ~ ., val)
+    val_y = val$Y
+    
+    grid = 10^seq(10, -2, length=100)
+    
+    ridge = glmnet(train_x, train_y, alpha=0, lambda=grid)
+    cv.out = cv.glmnet(val_x, val_y, alpha=0)
+    ridge_pred = predict(ridge, s=cv.out$lambda.min, newx=test_x)
+    ridge_mses = c(ridge_mses, mean((ridge_pred - test_y) ^ 2))
+    
+    lasso = glmnet(train_x, train_y, alpha=1, lambda=grid)
+    cv.out = cv.glmnet(val_x, val_y, alpha=1)
+    lasso_lmin = cv.out$lambda.min
+    lasso_pred = predict(lasso, s=lasso_lmin, newx=test_x)
+    lasso_mses = c(lasso_mses, mean((lasso_pred - test_y) ^ 2))
+    lasso_coef = predict(lasso, type='coefficients', s=lasso_lmin)
+    lasso_coefs = c(lasso_coefs, sum(lasso_coef != 0))
+    
+    net = glmnet(train_x, train_y, lambda=grid)
+    cv.out = cv.glmnet(val_x, val_y)
+    net_lmin = cv.out$lambda.min
+    net_pred = predict(net, s=net_lmin, newx=test_x)
+    net_mses = c(net_mses, mean((net_pred - test_y) ^ 2))
+    net_coef = predict(net, type='coefficients', s=net_lmin)
+    net_coefs = c(net_coefs, sum(net_coef != 0))
+  }
+  
+  lasso_coef_meds = c(lasso_coef_meds, median(lasso_coefs))
+  net_coef_meds = c(net_coef_meds, median(net_coefs))
+  
+  ridge_mse_meds = c(ridge_mse_meds, median(ridge_mses))
+  lasso_mse_meds = c(lasso_mse_meds, median(lasso_mses))
+  net_mse_meds = c(net_mse_meds, median(net_mses))
+}
+
+s2_mses = data.frame(Ridge=ridge_mse_meds, Lasso=lasso_mse_meds, Enet=net_mse_meds)
+boxplot(s2_mses, main='Scenario 2', xlab='Method', ylab='MSE')
+
+med_coefs$Scenario2 = c(median(lasso_coef_meds), median(net_coef_meds))
+med_mses$Scenario2 = c(mean(ridge_mse_meds), mean(lasso_mse_meds), mean(net_mse_meds))
 ```
 
 ### Scenario c)
 
-This scenario involves 50 simulated trials, each with 600 total observations of 40 weighted predictors. This time we introduce an error term with greater variance (standard deviation $ \sigma = 15 $) and a constant correlation of $0.5$ for all pairs of predictors.
+This scenario again involves 500 trials of 50 simulated datasets, this time with 600 total observations of 40 weighted predictors. We also introduce greater variance in the data (standard deviation $ \sigma = 15 $) and a constant correlation of $0.5$ for all pairs of predictors.
 
 ```{r}
+n = 600                                                    # 600 observations
+s = c(train = .0166, validate = .0166, test = .6667)       # 100/100/400
+b = c(rep(0, 10), rep(2, 10), rep(0, 10), rep(2, 10))      # beta values
+p = length(b)                                              # 40 predictors
+cc = function(i) 0.5                                       # constant correlation
+R = matrix(unlist(lapply(seq(1, p), cc)), nrow=p, ncol=p)  # correlation matrix
 
+lasso_coef_meds = c()
+net_coef_meds = c()
+
+ridge_mse_meds = c()
+lasso_mse_meds = c()
+net_mse_meds = c()
+
+for (ti in 1:t) {
+  
+  lasso_coefs = c()
+  net_coefs = c()
+  
+  ridge_mses = c()
+  lasso_mses = c()
+  net_mses = c()
+
+  for (di in d) {
+    df = generate_dataset(n, p, b, 0, 1, R, paste0('X', 1:p))
+    
+    sets = split(df, sample(cut(
+      seq(nrow(df)), 
+      nrow(df) * cumsum(c(0, s)),
+      labels = names(s)
+    )))
+    train = sets[[1]]
+    val = sets[[2]]
+    test = sets[[3]]
+    
+    train_x = model.matrix(Y ~ ., train)
+    train_y = train$Y
+    test_x = model.matrix(Y ~ ., test)
+    test_y = test$Y
+    val_x = model.matrix(Y ~ ., val)
+    val_y = val$Y
+    
+    grid = 10^seq(10, -2, length=100)
+    
+    ridge = glmnet(train_x, train_y, alpha=0, lambda=grid)
+    cv.out = cv.glmnet(val_x, val_y, alpha=0)
+    ridge_pred = predict(ridge, s=cv.out$lambda.min, newx=test_x)
+    ridge_mses = c(ridge_mses, mean((ridge_pred - test_y) ^ 2))
+    
+    lasso = glmnet(train_x, train_y, alpha=1, lambda=grid)
+    cv.out = cv.glmnet(val_x, val_y, alpha=1)
+    lasso_lmin = cv.out$lambda.min
+    lasso_pred = predict(lasso, s=lasso_lmin, newx=test_x)
+    lasso_mses = c(lasso_mses, mean((lasso_pred - test_y) ^ 2))
+    lasso_coef = predict(lasso, type='coefficients', s=lasso_lmin)
+    lasso_coefs = c(lasso_coefs, sum(lasso_coef != 0))
+    
+    net = glmnet(train_x, train_y, lambda=grid)
+    cv.out = cv.glmnet(val_x, val_y)
+    net_lmin = cv.out$lambda.min
+    net_pred = predict(net, s=net_lmin, newx=test_x)
+    net_mses = c(net_mses, mean((net_pred - test_y) ^ 2))
+    net_coef = predict(net, type='coefficients', s=net_lmin)
+    net_coefs = c(net_coefs, sum(net_coef != 0))
+  }
+  
+  lasso_coef_meds = c(lasso_coef_meds, median(lasso_coefs))
+  net_coef_meds = c(net_coef_meds, median(net_coefs))
+  
+  ridge_mse_meds = c(ridge_mse_meds, median(ridge_mses))
+  lasso_mse_meds = c(lasso_mse_meds, median(lasso_mses))
+  net_mse_meds = c(net_mse_meds, median(net_mses))
+}
+
+s3_mses = data.frame(Ridge=ridge_mse_meds, Lasso=lasso_mse_meds, Enet=net_mse_meds)
+boxplot(s3_mses, main='Scenario 3', xlab='Method', ylab='MSE')
+
+med_coefs$Scenario3 = c(median(lasso_coef_meds), median(net_coef_meds))
+med_mses$Scenario3 = c(mean(ridge_mse_meds), mean(lasso_mse_meds), mean(net_mse_meds))
 ```
 
 ### Scenario d)
 
-This final scenario involves 50 trials of 500 total observations and 40 weighted predictors. This time most predictors are i.i.d. as before, but 3 groups of 5 predictors are generated from the same respective sample (modulo error terms), introducing multicollinearity. Since the predictors in each group $i = 1, \ldots , 5$, $i = 6, \ldots , 10$, and $i = 11, \ldots , 15$ will be highly correlated within respective groups, grouped selection is necessary.
+This final scenario involves 500 trials of 50 datasets wht 500 total observations and 40 weighted predictors. This time most predictors are i.i.d. as before, but 3 groups of 5 predictors are generated from the same respective sample (modulo error terms), introducing multicollinearity. Since the predictors in each group $i = 1, \ldots , 5$, $i = 6, \ldots , 10$, and $i = 11, \ldots , 15$ will be highly correlated within respective groups, grouped selection is necessary.
 
 ```{r}
 
