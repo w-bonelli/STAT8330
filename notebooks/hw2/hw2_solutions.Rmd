@@ -1,0 +1,227 @@
+---
+title: "STAT 8330 HW2"
+output: html_notebook
+---
+
+# 1) Bootstrap CI coverage
+
+Define a function to compare the bootstrap's CI coverage with normal distribution CI.
+
+```{r}
+library(boot)
+
+CI_sim_normal_vs_bootstrap <- function(teststat, p=0.95, mu=0, sd=1, N=30, R=1000) {
+  # create normally distributed random data
+  data = rnorm(N, mean=mu, sd=sd)
+  
+  ##### normal CI
+  ts = teststat(sample(data, replace=T))                     # compute test statistic from sample w/ replacement
+  normal.l = ts + qnorm(0 + ((1 - p) / 2)) * (sd / sqrt(N))  # lower bound
+  normal.u = ts + qnorm(1 - ((1 - p) / 2)) * (sd / sqrt(N))  # upper bound
+  normal.result = (mu >= normal.l && mu <= normal.u)         # is test stat in CI?
+  
+  ##### bootstrap CI
+  fm <- function(d, i) teststat(d[i])                          # sample function
+  bs = boot(data, fm, R)                                       # run bootstrap
+  ci = (boot.ci(bootstrap))$bca                                # get adjusted CI
+  bootstrap.l = ci[4]                                          # lower bound
+  bootstrap.u = ci[5]                                          # upper bound
+  bootstrap.result = (mu >= bootstrap.l && mu <= bootstrap.u)  # is test stat in CI?
+  
+  # no tuples in R, so just return a list
+  return(list(normal.result, bootstrap.result))
+}
+```
+
+## a) Sample mean as estimator
+
+Try out the function using mean as the test statistic with N=30 and R=1000.
+
+```{r}
+normal.sum = 0
+bootstrap.sum = 0
+
+for (i in 1:100) {
+  results = CI_sim_normal_vs_bootstrap(function(x) mean(x))
+  normal.sum = normal.sum + (if (results[1] == TRUE) 1 else 0)
+  bootstrap.sum = bootstrap.sum + (if (results[2] == TRUE) 1 else 0)
+}
+
+print(paste('Normal:', normal.sum))
+print(paste('Bootstrap:', bootstrap.sum))
+```
+
+With N=30 and R=1000, the normal distribution CI contained the population mean 81% of the time. The bootstrap CI contained the population 100% of the time. (Results may vary when this code is re-run.)
+
+Try out the function using mean as the test statistic with N=30 and R=100.
+
+```{r}
+normal.sum = 0
+bootstrap.sum = 0
+
+for (i in 1:100) {
+  results = CI_sim_normal_vs_bootstrap(function(x) mean(x), R=100)
+  normal.sum = normal.sum + (if (results[1] == TRUE) 1 else 0)
+  bootstrap.sum = bootstrap.sum + (if (results[2] == TRUE) 1 else 0)
+}
+
+print(paste('Normal:', normal.sum))
+print(paste('Bootstrap:', bootstrap.sum))
+```
+
+With N=30 and R=100, the normal distribution CI contained the population mean 82% of the time. The bootstrap CI contained the population 100% of the time. (Results may vary when this code is re-run.)
+
+Try out the function using mean as the test statistic with N=10 and R=10.
+
+```{r}
+normal.sum = 0
+bootstrap.sum = 0
+
+for (i in 1:100) {
+  results = CI_sim_normal_vs_bootstrap(function(x) mean(x), N=1000, R=1)
+  normal.sum = normal.sum + (if (results[1] == TRUE) 1 else 0)
+  bootstrap.sum = bootstrap.sum + (if (results[2] == TRUE) 1 else 0)
+}
+
+print(paste('Normal:', normal.sum))
+print(paste('Bootstrap:', bootstrap.sum))
+```
+
+With N=10 and R=10, the normal distribution CI contained the population mean 85% of the time. The bootstrap CI contained the population 100% of the time. (Results may vary when this code is re-run.)
+
+## a) Sample median as estimator
+
+Now we try out the function using median as the test statistic with N=30 and R=1000.
+
+```{r}
+normal.sum = 0
+bootstrap.sum = 0
+
+for (i in 1:100) {
+  results = CI_sim_normal_vs_bootstrap(function(x) median(x))
+  normal.sum = normal.sum + (if (results[1] == TRUE) 1 else 0)
+  bootstrap.sum = bootstrap.sum + (if (results[2] == TRUE) 1 else 0)
+}
+
+print(paste('Normal:', normal.sum))
+print(paste('Bootstrap:', bootstrap.sum))
+```
+
+With N=30 and R=1000, the normal distribution CI contained the population mean 68% of the time. The bootstrap CI contained the population 100% of the time. (Results may vary when this code is re-run.)
+
+Try out the function using median as the test statistic with N=10 and R=10.
+
+```{r}
+normal.sum = 0
+bootstrap.sum = 0
+
+for (i in 1:100) {
+  results = CI_sim_normal_vs_bootstrap(function(x) median(x), N=10, R=10)
+  normal.sum = normal.sum + (if (results[1] == TRUE) 1 else 0)
+  bootstrap.sum = bootstrap.sum + (if (results[2] == TRUE) 1 else 0)
+}
+
+print(paste('Normal:', normal.sum))
+print(paste('Bootstrap:', bootstrap.sum))
+```
+
+With N=10 and R=10, the normal distribution CI contained the population mean 77% of the time. The bootstrap CI contained the population 100% of the time. (Results may vary when this code is re-run.)
+
+## Discussion
+
+With the normal distribution CI, the sample mean was a better estimator of the population mean than sample median for all tested values of N and R. Notably, the adjusted bootstrap CI *always* contained the population mean, regardless of estimator or N and R values.
+
+# 2) Permutation test for difference between groups
+
+Define the `permtest` function.
+
+```{r}
+permtest <- function(x, y, teststat, R=1000, test='two') {
+  combined = c(x, y)
+  diffs = numeric(R)
+  observed.diff = (teststat(x)-teststat(y))
+  x.length = length(x)
+  y.length = length(y)
+  
+  # take R permutations
+  for (i in 1:R) {
+    s = sample(x.length + y.length, x.length)
+    xs = combined[s]
+    ys = combined[-s]
+    diffs[i] = (teststat(xs)-teststat(ys))
+  }
+  
+  # sort the mean differences
+  diffs = sort(diffs, decreasing=TRUE)
+ 
+  # calculate and return p-value for selected test
+  if (test == 'lower') {
+    return(sum(diffs<observed.diff)/R)
+  } 
+  if (test == 'upper') {
+    return(sum(diffs>observed.diff)/R)
+  }
+  if (test == 'two') {
+    l = sum(diffs<observed.diff)/R
+    u = sum(diffs>observed.diff)/R
+    return(min(l, u))
+  }
+}
+```
+
+Run the function on sample data.
+
+```{r}
+# generate random normally distributed data with identical parameters
+d1=rnorm(100, mean=3, sd=1)
+d2=rnorm(100, mean=3, sd=1)
+
+# run the function with 2-tailed test and mean as the test statistic
+permtest(d1, d2, function(x) mean(x))
+
+# run the function with lower-tailed test and mean as the test statistic
+permtest(d1, d2, function(x) mean(x), test='lower')
+
+# run the function with upper-tailed test and mean as the test statistic
+permtest(d1, d2, function(x) mean(x), test='upper')
+
+# run the function with 2-tailed test and median as the test statistic
+permtest(d1, d2, function(x) median(x))
+
+# run the function with lower-tailed test and median as the test statistic
+permtest(d1, d2, function(x) median(x), test='lower')
+
+# run the function with upper-tailed test and median as the test statistic
+permtest(d1, d2, function(x) median(x), test='upper')
+
+# generate random normally distributed data with different parameters
+d3=rnorm(100, mean=3, sd=2)
+d4=rnorm(100, mean=2.2, sd=2)
+
+# run the function with 2-tailed test and mean as the test statistic
+permtest(d3, d4, function(x) mean(x))
+
+# run the function with lower-tailed test and mean as the test statistic
+permtest(d3, d4, function(x) mean(x), test='lower')
+
+# run the function with upper-tailed test and mean as the test statistic
+permtest(d3, d4, function(x) mean(x), test='upper')
+
+# run the function with 2-tailed test and median as the test statistic
+permtest(d3, d4, function(x) median(x))
+
+# run the function with lower-tailed test and median as the test statistic
+permtest(d3, d4, function(x) median(x), test='lower')
+
+# run the function with upper-tailed test and median as the test statistic
+permtest(d3, d4, function(x) median(x), test='upper')
+```
+
+When the datasets `x` and `y` are from the same distribution, p-values never become significant. When `x` and `y` are from moderately different distributions (population means differing by 0.8), however, p-values do approach significance. The two-tailed test ignores the sign of the difference between population means of `x` and `y`. The lower-tailed test aims to determine only whether the distribution of `x` has a greater population mean than that of `y`, while the upper-tailed test evaluates the inverse.
+
+# 3) Permutation test vs. t-test for difference between groups
+
+```{r}
+
+```
+
