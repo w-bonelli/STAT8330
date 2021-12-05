@@ -1,0 +1,88 @@
+---
+title: "STAT 8830 HW6"
+output: html_notebook
+---
+
+# 1) Finding best k for k-nearest neighbors with LOOCV
+
+Here we will define a function to apply the $k$-nearest neighbors algorithm to a given labeled dataset and find the optimal value of $k$ with leave-one-out cross-validation: that is the value of $k$ which yields the best estimates, on average, when a value is masked and predicted from its neighborhood. Given a set of labeled pairs $(X_i, Y_i)$, $i \in {1, ..., n}$, $k$ can range from $1$ to $n - 1$. We exhaustively test all possibilities and select the one that minimizes mean squared error.
+
+```{r}
+library(plyr)
+library(ggplot2)
+library(class)
+
+KNNcv = function(train, test, cl) {
+  ks = seq(1, min(nrow(train), nrow(test)))
+  minerror = length(ks)
+  mink = 1
+  minpreds = NULL
+  
+  for (k in ks) {
+    model = knn(train, test, cl, k)
+    error = mean(model != cl)
+    errors = c(errors, c(error))
+    print(paste('k =', k, ' proportion of incorrect predictions:', error))
+    
+    # find the most accurate value of k
+    if (error < minerror){
+      minerror = error
+      mink = k
+    }
+  }
+  
+  plot(ks, errors, main=paste('accuracy as a function of k'))
+  print(paste('Min k =', mink, 'min error:', minerror))
+  c(mink, minpreds)
+}
+```
+
+First, generate a dataset with randomly located, normally distributed clusters.
+
+```{r}
+library(netgen)  # nice library for creating clustered data: https://github.com/jakobbossek/netgen
+library(Rcpp)
+library(ggplot2)
+
+set.seed(42)
+
+c = 4    # clusters
+n = 100  # data points
+
+# create a clustered dataset (smaller values of 'upper' increase cluster mixing)
+data = generateClusteredNetwork(n.cluster = c, n.points = n, upper = n / c)
+df = data.frame(data)
+
+# create plot
+p = ggplot(df) +
+  geom_point(aes(x=x1, y=x2, color=as.factor(membership))) +
+  theme_bw() +
+  scale_color_brewer(palette="Dark2") + 
+  labs(title=paste(n, " points,", c, " clusters")) +
+  xlab('X') +
+  ylab('Y')
+print(p)
+```
+Split the data into subsets for training and testing.
+
+```{r}
+s = c(train = .5, test = .5)
+sets = split(df, sample(cut(
+    seq(nrow(df)), 
+    nrow(df) * cumsum(c(0, s)),
+    labels = names(s)
+  )))
+train = sets[[1]]
+test = sets[[2]]
+```
+
+Now run the simulation function.
+
+```{r}
+result = KNNcv(train[c("x1", "x2")], test[c("x1", "x2")], train$membership)
+k = result[[1]]
+preds = result[[2]]
+print(k)
+print(preds)
+```
+
