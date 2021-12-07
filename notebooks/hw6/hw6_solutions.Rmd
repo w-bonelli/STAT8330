@@ -13,73 +13,55 @@ library(ggplot2)
 library(class)
 
 KNNcv = function(train, test, cl) {
-  ks = seq(1, min(nrow(train), nrow(test)))
+  ks = seq(1, min(nrow(train), nrow(test)) - 1)
   minerror = length(ks)
   mink = 1
   minpreds = NULL
   
   for (k in ks) {
-    model = knn(train, test, cl, k)
-    error = mean(model != cl)
-    errors = c(errors, c(error))
-    print(paste('k =', k, ' proportion of incorrect predictions:', error))
-    
-    # find the most accurate value of k
-    if (error < minerror){
-      minerror = error
-      mink = k
-    }
-  }
-  
-  plot(ks, errors, main=paste('accuracy as a function of k'))
-  print(paste('Min k =', mink, 'min error:', minerror))
-  c(mink, minpreds)
+    fit = knn.cv(train, cl, k=k, prob=T)
+    table(fit)
 }
 ```
 
 First, generate a dataset with randomly located, normally distributed clusters.
 
 ```{r}
-library(netgen)  # nice library for creating clustered data: https://github.com/jakobbossek/netgen
-library(Rcpp)
+library(MASS)
 library(ggplot2)
 
 set.seed(42)
 
-c = 4    # clusters
-n = 100  # data points
-
-# create a clustered dataset (smaller values of 'upper' increase cluster mixing)
-data = generateClusteredNetwork(n.cluster = c, n.points = n, upper = n / c)
-df = data.frame(data)
-
-# create plot
-p = ggplot(df) +
-  geom_point(aes(x=x1, y=x2, color=as.factor(membership))) +
-  theme_bw() +
-  scale_color_brewer(palette="Dark2") + 
-  labs(title=paste(n, " points,", c, " clusters")) +
-  xlab('X') +
-  ylab('Y')
-print(p)
+n = 10  # points per cluster
+mu_x1 = 10
+mu_y1 = 10
+mu_x2 = 30
+mu_y2 = 10
+mu_x3 = 30
+mu_y3 = 30
+sd = 60
+d1 = mvrnorm(n, mu=c(mu_x1, mu_y1), Sigma=sd * diag(2))
+d2 = mvrnorm(n, mu=c(mu_x2, mu_y2), Sigma=sd * diag(2))
+d3 = mvrnorm(n, mu=c(mu_x3, mu_y3), Sigma=sd * diag(2))
+d = rbind(d1, d2, d3)
+d = cbind(d, c(rep(1, n), rep(2, n), rep(3, n)))
+colnames(d) = c('x', 'y', 'category')
+plot(d[,1:2], col=d[,3], xlab="X1", ylab="X2", main="Sample Data", pch=16)
+legend("bottomright", c("category 1", "category 2", "category 3"), col=1:3, pch=16)
 ```
-Split the data into subsets for training and testing.
+
+Now split the data into subsets for training and testing.
 
 ```{r}
-s = c(train = .5, test = .5)
-sets = split(df, sample(cut(
-    seq(nrow(df)), 
-    nrow(df) * cumsum(c(0, s)),
-    labels = names(s)
-  )))
-train = sets[[1]]
-test = sets[[2]]
+train = sample(1:nrow(d), nrow(d) / 2)
+d.train = d[train,]
+d.test = d[-train,]
 ```
 
 Now run the simulation function.
 
 ```{r}
-result = KNNcv(train[c("x1", "x2")], test[c("x1", "x2")], train$membership)
+result = KNNcv(d.train[, c("x", "y")], d.test[, c("x", "y")], d.train[, c('category')])
 k = result[[1]]
 preds = result[[2]]
 print(k)
