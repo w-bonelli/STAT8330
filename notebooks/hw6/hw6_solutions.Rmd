@@ -1,6 +1,8 @@
 ---
 title: "STAT 8830 HW6"
-output: html_notebook
+output:
+  pdf_document: default
+  html_notebook: default
 ---
 
 # 1) Finding best k for k-nearest neighbors with LOOCV
@@ -26,13 +28,17 @@ KNNcv = function(train, test, cl) {
       if (pred == real) num_correct = num_correct + 1
     }
     props_correct = c(props_correct, num_correct / nrow(train))
-    print(paste(num_correct, 'correct for k =', k))
+    
+    # for debugging
+    # print(paste(num_correct, 'correct for k =', k))
   }
   
   # if multiple values of k are tied for optimal, just pick one randomly
   best_k = which.max(props_correct)
   best_prop = props_correct[best_k]
-  print(paste0('Best k=', best_k, ' with ', round(best_prop, digits = 2) * 100, '% correct'))
+  
+  # for debugging
+  # print(paste0('Best k=', best_k, ' with ', round(best_prop, digits = 2) * 100, '% correct'))
   
   # fit knn to test data and return predictions and best k
   list(knn(train, test, cl, best_k), best_k)
@@ -46,7 +52,7 @@ library(MASS)
 library(gmodels)
 library(ggplot2)
 
-set.seed(42)
+set.seed(24)
 
 n = 100  # points per cluster
 mu_x1 = 10
@@ -81,11 +87,7 @@ result = KNNcv(d.train[, c("x", "y")], d.test[, c("x", "y")], d.train[, 'categor
 test_preds = result[[1]]
 best_k = result[[2]]
 
-X = seq(min(d.train[, 'x']) - 1, max(d.train[, 'x']) + 1, by = 1)
-Y = seq(min(d.train[, 'y']) - 1, max(d.train[, 'y']) + 1, by = 1)
-grid = expand.grid(X, Y)
-colnames(grid) = c('x', 'y')
-
+print(paste0('KNN with k=', best_k, ' got ', round(sum(test_preds == d.test[, 'category']) / nrow(d.test), digits = 2) * 100, '% correct'))
 plot(d.test[, c("x")], d.test[, c("y")], xlab = 'X', ylab = 'Y', pch = as.numeric(d.test[, 'category']) + 1, main = paste('Predictions for k =', best_k))
 legend(x = 'topleft', legend = c("Correct", "Incorrect"),  fill = c("green", "red"))
 points(d.test[, c("x", "y")], col = ifelse(test_preds == d.test[, 'category'], 'springgreen3', 'tomato'))
@@ -95,14 +97,14 @@ points(d.test[, c("x", "y")], col = ifelse(test_preds == d.test[, 'category'], '
 
 Here we want to compare the accuracy of LDA, KNN, and tree classification.
 
-First we generate a test dataset with 2 classes. To generate complex boundaries we can use a mixture distribution such that the second class is normal with 1/2 odds of mean (30, 10) and sd 20 and 1/2 of mean(20, 40) and sd 60.
+First we generate a test dataset with 2 classes. To generate complex boundaries we can use a mixture distribution such that the second class is normal with 1/2 odds of mean (20, 10) and sd 20 and 1/2 of mean(20, 40) and sd 60.
 
 ```{r}
 n = 100  # points per cluster
 mu_x1 = 10
 mu_y1 = 10
 sd1 = 40
-mu_x2 = 30
+mu_x2 = 20
 mu_y2 = 10
 sd2 = 20
 mu_x3 = 20
@@ -118,3 +120,140 @@ plot(d[,1:2], col=d[,3], xlab="X", ylab="Y", main="Sample Data", pch=16)
 legend("bottomright", c("category 1", "category 2"), col=1:2, pch=16)
 ```
 
+Split the data and subsets for training and testing.
+
+```{r}
+t = sample(1:nrow(d), nrow(d) / 2)
+d.train = data.frame(d[t,])
+d.test = data.frame(d[-t,])
+```
+
+
+Now we can define functions to perform LOOCV for LDA and tree classification. First LDA:
+
+```{r}
+LDAcv = function(train, test) {
+  # loop over rows and validate with each one
+  # for (i in 1:nrow(train)) {
+  #   fit = lda(category ~ ., data = train[-i,])
+  #   real = cl[i]
+  #   pred = predict(fit, newdata = train[1,])$class
+  # }
+  fit = lda(category ~ ., data = train, cv = TRUE)
+  list(predict(fit, newdata = test)$class, fit)
+}
+```
+
+
+
+Now test the 3 methods. First the LDA:
+
+```{r}
+knn_test = KNNcv(d.train[, c("x", "y")], d.test[, c("x", "y")], d.train[, 'category'])
+knn_test_preds = knn_test[[1]]
+print(paste0('KNN with k=', knn_test[[2]], ' got ', round(sum(knn_test_preds == d.test[, 'category']) / nrow(d.test), digits = 2) * 100, '% correct'))
+plot(d.test[, c("x")], d.test[, c("y")], xlab = 'X', ylab = 'Y', pch = as.numeric(d.test[, 'category']) + 1, main = paste('KNN Predictions'))
+legend(x = 'topleft', legend = c("Correct", "Incorrect"),  fill = c("green", "red"))
+points(d.test[, c("x", "y")], col = ifelse(knn_test_preds == d.test[, 'category'], 'springgreen3', 'tomato'))
+```
+
+Next the LDA:
+
+```{r}
+lda_test = LDAcv(d.train, d.test)
+lda_test_preds = lda_test[[1]]
+print(paste0('LDA got ', round(sum(lda_test_preds == d.test[, 'category']) / nrow(d.test), digits = 2) * 100, '% correct'))
+plot(d.test[, c("x")], d.test[, c("y")], xlab = 'X', ylab = 'Y', pch = as.numeric(d.test[, 'category']) + 1, main = paste('LDA Predictions'))
+legend(x = 'topleft', legend = c("Correct", "Incorrect"),  fill = c("green", "red"))
+points(d.test[, c("x", "y")], col = ifelse(lda_test_preds == d.test[, 'category'], 'springgreen3', 'tomato'))
+```
+Finally we try a decision tree classifier.
+
+```{r}
+library(tree)
+
+# classification tree requires a categorical response
+d.train[, 'category'] = as.factor(d.train[, 'category'])
+d.test[, 'category'] = as.factor(d.test[, 'category'])
+
+fit = tree(category ~ ., data = d.train)
+cv = cv.tree(fit, K = nrow(d.train))  # leave-one-out CV
+print(cv$dev / length(d.test))
+pruned = prune.misclass(fit, best = which.min(cv$dev))
+plot(pruned)
+text(pruned)
+plot(cv$size, cv$dev / nrow(d.test), type = "b", xlab = "Size", ylab = "Error Rate vs. Tree Size")  # https://daviddalpiaz.github.io/r4sl/trees.html
+tree_test_preds = predict(pruned, d.test, type = 'class')
+print(paste0('Decision Tree got ', round(sum(tree_test_preds == d.test[, 'category']) / nrow(d.test), digits = 2) * 100, '% correct'))
+plot(d.test[, c("x")], d.test[, c("y")], xlab = 'X', ylab = 'Y', pch = as.numeric(d.test[, 'category']) + 1, main = paste('Decision Tree Predictions'))
+legend(x = 'topleft', legend = c("Correct", "Incorrect"),  fill = c("green", "red"))
+points(d.test[, c("x", "y")], col = ifelse(tree_test_preds == d.test[, 'category'], 'springgreen3', 'tomato'))
+```
+
+The LDA performs the worst here, although all 3 methods perform relatively similarly.
+
+Next we can try a simpler dataset with a boundary which should be easier to learn, but with the presence of a column of noise which is totally uncorrelated with class.
+
+```{r}
+n = 100  # points per cluster
+mu_x1 = 10
+mu_y1 = 10
+sd1 = 40
+mu_x3 = 30
+mu_y3 = 20
+sd3 = 60
+d1 = mvrnorm(n, mu=c(mu_x1, mu_y1), Sigma=sd1 * diag(2))
+d3 = mvrnorm(n, mu=c(mu_x3, mu_y3), Sigma=sd3 * diag(2))
+d = rbind(d1, d3)
+d = cbind(d, sample.int(100, n * 2, replace = T), c(rep(1, n), rep(2, n)))
+colnames(d) = c('x', 'y', 'noise', 'category')
+plot(d[,1:2], col=d[,4], xlab="X", ylab="Y", main="Sample Data", pch=16)
+legend("bottomright", c("category 1", "category 2"), col=1:2, pch=16)
+
+t = sample(1:nrow(d), nrow(d) / 2)
+d.train = data.frame(d[t,])
+d.test = data.frame(d[-t,])
+```
+
+We can begin with the LDA this time. First with the noisy column:
+
+```{r}
+lda_test = LDAcv(d.train, d.test)
+lda_test_preds = lda_test[[1]]
+print(paste0('LDA got ', round(sum(lda_test_preds == d.test[, 'category']) / nrow(d.test), digits = 2) * 100, '% correct'))
+plot(d.test[, c("x")], d.test[, c("y")], xlab = 'X', ylab = 'Y', pch = as.numeric(d.test[, 'category']) + 1, main = paste('LDA Predictions'))
+legend(x = 'topleft', legend = c("Correct", "Incorrect"),  fill = c("green", "red"))
+points(d.test[, c("x", "y")], col = ifelse(lda_test_preds == d.test[, 'category'], 'springgreen3', 'tomato'))
+```
+
+Next the KNN:
+
+```{r}
+knn_test = KNNcv(d.train[, c("x", "y", "noise")], d.test[, c("x", "y", "noise")], d.train[, 'category'])
+knn_test_preds = knn_test[[1]]
+print(paste0('KNN with k=', knn_test[[2]], ' got ', round(sum(knn_test_preds == d.test[, 'category']) / nrow(d.test), digits = 2) * 100, '% correct'))
+plot(d.test[, c("x")], d.test[, c("y")], xlab = 'X', ylab = 'Y', pch = as.numeric(d.test[, 'category']) + 1, main = paste('KNN Predictions'))
+legend(x = 'topleft', legend = c("Correct", "Incorrect"),  fill = c("green", "red"))
+points(d.test[, c("x", "y")], col = ifelse(knn_test_preds == d.test[, 'category'], 'springgreen3', 'tomato'))
+```
+
+
+Now without the noise, first LDA, then KNN.
+
+```{r}
+lda_test = LDAcv(d.train[c('x', 'y', 'category')], d.test[c('x', 'y', 'category')])
+lda_test_preds = lda_test[[1]]
+print(paste0('LDA (no noise) got ', round(sum(lda_test_preds == d.test[, 'category']) / nrow(d.test), digits = 2) * 100, '% correct'))
+plot(d.test[, c("x")], d.test[, c("y")], xlab = 'X', ylab = 'Y', pch = as.numeric(d.test[, 'category']) + 1, main = paste('LDA Predictions (no noise)'))
+legend(x = 'topleft', legend = c("Correct", "Incorrect"),  fill = c("green", "red"))
+points(d.test[, c("x", "y")], col = ifelse(lda_test_preds == d.test[, 'category'], 'springgreen3', 'tomato'))
+
+knn_test = KNNcv(d.train[, c("x", "y")], d.test[, c("x", "y")], d.train[, 'category'])
+knn_test_preds = knn_test[[1]]
+print(paste0('KNN (no noise) with k=', knn_test[[2]], ' got ', round(sum(knn_test_preds == d.test[, 'category']) / nrow(d.test), digits = 2) * 100, '% correct'))
+plot(d.test[, c("x")], d.test[, c("y")], xlab = 'X', ylab = 'Y', pch = as.numeric(d.test[, 'category']) + 1, main = paste('KNN Predictions (no noise)'))
+legend(x = 'topleft', legend = c("Correct", "Incorrect"),  fill = c("green", "red"))
+points(d.test[, c("x", "y")], col = ifelse(knn_test_preds == d.test[, 'category'], 'springgreen3', 'tomato'))
+```
+
+The KNN improved by a single percentage point, but the LDA's accuracy was unchanged by the removal of the noise variable.
